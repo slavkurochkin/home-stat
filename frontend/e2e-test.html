@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>E2E Signup/Login Test</title>
+</head>
+<body>
+    <h1>E2E Signup/Login Test</h1>
+    <div id="results"></div>
+    <script>
+        const resultsDiv = document.getElementById('results');
+        const log = (msg) => {
+            console.log(msg);
+            resultsDiv.innerHTML += '<p>' + msg + '</p>';
+        };
+
+        const testSignup = async () => {
+            log('=== Starting E2E Signup Test ===');
+            
+            const testData = {
+                email: `test${Date.now()}@example.com`,
+                password: 'admin1234',
+                full_name: 'slav'
+            };
+            
+            log('Test data: ' + JSON.stringify(testData));
+            
+            try {
+                // Test 1: API call through Vite proxy
+                log('\n1. Testing API call to /api/users/register (through Vite proxy)...');
+                const response = await fetch('/api/users/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testData),
+                });
+                
+                const data = await response.json();
+                log('Response status: ' + response.status);
+                log('Response data: ' + JSON.stringify(data));
+                
+                if (response.ok && data.token && data.user) {
+                    log('✓ Registration successful!');
+                    log('User ID: ' + data.user.id);
+                    
+                    // Test 2: Verify token works for authenticated request
+                    log('\n2. Testing authenticated request with token...');
+                    const profileResponse = await fetch('/api/users/profile', {
+                        headers: {
+                            'Authorization': `Bearer ${data.token}`,
+                        },
+                    });
+                    
+                    const profileData = await profileResponse.json();
+                    log('Profile response status: ' + profileResponse.status);
+                    
+                    if (profileResponse.ok) {
+                        log('✓ Authentication successful!');
+                        log('Profile email: ' + profileData.email);
+                    } else {
+                        log('✗ Authentication failed');
+                    }
+                    
+                    // Test 3: Test login with the registered user
+                    log('\n3. Testing login with registered credentials...');
+                    const loginResponse = await fetch('/api/users/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            email: testData.email,
+                            password: testData.password,
+                        }),
+                    });
+                    
+                    const loginData = await loginResponse.json();
+                    log('Login response status: ' + loginResponse.status);
+                    
+                    if (loginResponse.ok && loginData.token) {
+                        log('✓ Login successful!');
+                        log('✓ All tests passed!');
+                        return { success: true, data };
+                    } else {
+                        log('✗ Login failed');
+                        return { success: false, error: loginData };
+                    }
+                } else {
+                    log('✗ Registration failed');
+                    return { success: false, error: data };
+                }
+            } catch (error) {
+                log('✗ Test failed with error: ' + error.message);
+                return { success: false, error: error.message };
+            }
+        };
+
+        // Run the test
+        testSignup().then(result => {
+            log('\n=== Test Complete ===');
+            log('Final result: ' + JSON.stringify(result));
+        });
+    </script>
+</body>
+</html>
+

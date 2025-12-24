@@ -1,0 +1,138 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: utility-postgres
+    environment:
+      POSTGRES_DB: utility_db
+      POSTGRES_USER: utility_user
+      POSTGRES_PASSWORD: utility_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - utility-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U utility_user -d utility_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: utility-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - USER_SERVICE_URL=http://user-service:3001
+      - UTILITY_SERVICE_URL=http://utility-service:3002
+      - ANALYTICS_SERVICE_URL=http://analytics-service:3003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3004
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+    depends_on:
+      - user-service
+      - utility-service
+      - analytics-service
+      - notification-service
+    networks:
+      - utility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  user-service:
+    build: ./services/user-service
+    container_name: utility-user-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_URL=postgresql://utility_user:utility_pass@postgres:5432/utility_db
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRES_IN=24h
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - utility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  utility-service:
+    build: ./services/utility-service
+    container_name: utility-utility-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DATABASE_URL=postgresql://utility_user:utility_pass@postgres:5432/utility_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - utility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  analytics-service:
+    build: ./services/analytics-service
+    container_name: utility-analytics-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - DATABASE_URL=postgresql://utility_user:utility_pass@postgres:5432/utility_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - utility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  notification-service:
+    build: ./services/notification-service
+    container_name: utility-notification-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+      - DATABASE_URL=postgresql://utility_user:utility_pass@postgres:5432/utility_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - utility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  postgres_data:
+
+networks:
+  utility-network:
+    driver: bridge
+

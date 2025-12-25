@@ -1,0 +1,71 @@
+---
+description: Testing workflow rules for Playwright e2e tests
+globs: 
+alwaysApply: true
+---
+
+# Home Stat Project - Cursor Rules
+
+## Project Overview
+This is a home utility management application with:
+- React frontend (Vite, MUI)
+- Microservices backend (Node.js/Express)
+- PostgreSQL database
+- Docker Compose for orchestration
+
+## Testing Requirements
+
+### Playwright E2E Tests
+After completing any feature implementation or bug fix, you MUST:
+
+1. **Ask about adding Playwright tests**: Once a feature or task is completed, always ask the user:
+   > "Would you like me to add Playwright e2e tests for this feature?"
+   
+   If yes, create tests in `/frontend/tests/` directory following this pattern:
+   - Test file naming: `[feature-name].spec.ts`
+   - Use Page Object Model when appropriate
+   - Include happy path and error scenarios
+   - Test user-visible behavior, not implementation details
+
+2. **Ask about running tests**: After tests are written (or if tests already exist), ask:
+   > "Would you like me to run the Playwright tests now?"
+   
+   If yes, run `npx playwright test` in the frontend directory.
+
+### Playwright Test Structure
+When creating Playwright tests, follow this structure:
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Feature Name', () => {
+  test.beforeEach(async ({ page }) => {
+    // Setup code
+  });
+
+  test('should [expected behavior]', async ({ page }) => {
+    // Test implementation
+  });
+});
+```
+
+### Test Locations
+- E2E tests: `/frontend/tests/*.spec.ts`
+- Playwright config: `/frontend/playwright.config.ts`
+
+## Workflow Reminders
+
+### Before marking a task complete, always:
+1. Verify the implementation works as expected
+2. Ask: "Would you like me to add Playwright e2e tests for this feature?"
+3. If tests were written or exist, ask: "Would you like me to run the Playwright tests now?"
+
+### When user declines tests:
+- Acknowledge and proceed without tests
+- Do not repeatedly ask for the same feature
+
+## Code Style
+- Use TypeScript for Playwright tests
+- Use async/await for all browser interactions
+- Use meaningful test descriptions
+- Group related tests with `test.describe()`

@@ -419,9 +419,12 @@ export default function Bills() {
         await api.put(`/utilities/recurring/${editingRecurring.id}`, data);
       } else {
         await api.post('/utilities/recurring', data);
+        // Process recurring bills to immediately create the bill if day has passed
+        await processRecurringBills();
       }
       handleCloseRecurringForm();
       fetchRecurringBills();
+      fetchBills(); // Refresh bills list to show any newly created bills
     } catch (err) {
       setRecurringError(err.response?.data?.error?.message || 'Failed to save recurring bill');
     }

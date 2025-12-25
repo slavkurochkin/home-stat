@@ -674,20 +674,27 @@ app.delete('/recurring/:id', authenticateToken, async (req, res) => {
 
 // Process recurring bills - creates bills for current month if not already created
 app.post('/recurring/process', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
   try {
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const currentDay = now.getDate();
+    const monthStart = `${currentMonth}-01`;
+    const monthEnd = `${currentMonth}-31`;
+
+    await client.query('BEGIN');
 
     // Get active recurring bills that haven't been generated for this month
-    const recurringBills = await pool.query(
+    // Use FOR UPDATE to lock the rows and prevent race conditions
+    const recurringBills = await client.query(
       `SELECT rb.*, ut.name as utility_type_name 
        FROM recurring_bills rb 
        INNER JOIN utility_types ut ON rb.utility_type_id = ut.id 
        WHERE rb.user_id = $1 
          AND rb.is_active = true 
          AND (rb.last_generated_month IS NULL OR rb.last_generated_month < $2)
-         AND rb.day_of_month <= $3`,
+         AND rb.day_of_month <= $3
+       FOR UPDATE OF rb`,
       [req.user.userId, currentMonth, currentDay]
     );
 
@@ -697,7 +704,29 @@ app.post('/recurring/process', authenticateToken, async (req, res) => {
       // Create the bill date string directly to avoid timezone issues
       const billDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(recurring.day_of_month).padStart(2, '0')}`;
       
-      const billResult = await pool.query(
+      // Check if a bill was already created for this recurring template this month
+      // This is a safety check in case of any race conditions
+      const existingBill = await client.query(
+        `SELECT id FROM bills 
+         WHERE user_id = $1 
+           AND utility_type_id = $2 
+           AND bill_date >= $3 
+           AND bill_date <= $4
+           AND notes LIKE '[Auto]%'
+         LIMIT 1`,
+        [req.user.userId, recurring.utility_type_id, monthStart, monthEnd]
+      );
+
+      if (existingBill.rows.length > 0) {
+        // Bill already exists for this month, just update last_generated_month and skip
+        await client.query(
+          'UPDATE recurring_bills SET last_generated_month = $1 WHERE id = $2',
+          [currentMonth, recurring.id]
+        );
+        continue;
+      }
+      
+      const billResult = await client.query(
         `INSERT INTO bills (user_id, utility_type_id, amount, bill_date, payment_status, notes) 
          VALUES ($1, $2, $3, $4, $5, $6) 
          RETURNING id, user_id, utility_type_id, amount, 
@@ -714,7 +743,7 @@ app.post('/recurring/process', authenticateToken, async (req, res) => {
       );
 
       // Update last_generated_month
-      await pool.query(
+      await client.query(
         'UPDATE recurring_bills SET last_generated_month = $1 WHERE id = $2',
         [currentMonth, recurring.id]
       );
@@ -727,14 +756,19 @@ app.post('/recurring/process', authenticateToken, async (req, res) => {
       });
     }
 
+    await client.query('COMMIT');
+
     res.json({ 
       processed: createdBills.length, 
       created_bills: createdBills,
       current_month: currentMonth,
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Process recurring bills error:', error);
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process recurring bills' } });
+  } finally {
+    client.release();
   }
 });
 

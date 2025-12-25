@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS bills (
     bill_date DATE NOT NULL,
     due_date DATE,
     usage_amount DECIMAL(10,2) CHECK (usage_amount IS NULL OR usage_amount > 0),
+    payment_status VARCHAR(20) DEFAULT 'need_payment' CHECK (payment_status IN ('need_payment', 'paid', 'auto_pay')),
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -147,6 +148,7 @@ CREATE TABLE IF NOT EXISTS recurring_bills (
     utility_type_id UUID NOT NULL REFERENCES utility_types(id) ON DELETE RESTRICT,
     amount DECIMAL(10,2) NOT NULL CHECK (amount > 0),
     day_of_month INTEGER NOT NULL CHECK (day_of_month >= 1 AND day_of_month <= 28),
+    payment_status VARCHAR(20) DEFAULT 'need_payment' CHECK (payment_status IN ('need_payment', 'paid', 'auto_pay')),
     notes TEXT,
     is_active BOOLEAN DEFAULT true,
     last_generated_month VARCHAR(7),  -- Format: YYYY-MM

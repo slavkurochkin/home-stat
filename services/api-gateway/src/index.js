@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const corsOptions = {
   origin: ['http://localhost:5173', 'http://localhost:3000'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
@@ -156,6 +156,9 @@ app.post('/api/users/login', (req, res, next) => {
   console.log('Login route hit, proxying to:', USER_SERVICE_URL);
   loginProxy(req, res, next);
 });
+
+// Handle OPTIONS preflight requests explicitly (before auth middleware blocks them)
+app.options('/api/*', cors(corsOptions));
 
 // Protected routes (authentication required)
 // Path rewrite patterns remove the /api/service prefix so /api/utilities/bills becomes /bills

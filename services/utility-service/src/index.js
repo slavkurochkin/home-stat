@@ -57,14 +57,20 @@ const billSchema = Joi.object({
   bill_date: Joi.date().required(),
   due_date: Joi.date().allow(null).optional(),
   usage_amount: Joi.number().positive().precision(2).allow(null).optional(),
+  payment_status: Joi.string().valid('need_payment', 'paid', 'auto_pay').optional(),
   notes: Joi.string().allow('', null).optional(),
   household_id: Joi.string().uuid().allow(null).optional(),
+});
+
+const billStatusSchema = Joi.object({
+  payment_status: Joi.string().valid('need_payment', 'paid', 'auto_pay').required(),
 });
 
 const recurringBillSchema = Joi.object({
   utility_type_id: Joi.string().uuid().required(),
   amount: Joi.number().positive().precision(2).required(),
   day_of_month: Joi.number().integer().min(1).max(28).required(),
+  payment_status: Joi.string().valid('need_payment', 'paid', 'auto_pay').optional(),
   notes: Joi.string().allow('', null).optional(),
   is_active: Joi.boolean().optional(),
 });
@@ -346,9 +352,9 @@ app.post('/bills', authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO bills (user_id, household_id, utility_type_id, amount, bill_date, due_date, usage_amount, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, user_id, household_id, utility_type_id, amount, bill_date, due_date, usage_amount, notes, created_at`,
+      `INSERT INTO bills (user_id, household_id, utility_type_id, amount, bill_date, due_date, usage_amount, payment_status, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, user_id, household_id, utility_type_id, amount, bill_date, due_date, usage_amount, payment_status, notes, created_at`,
       [
         req.user.userId,
         value.household_id || null,
@@ -357,6 +363,7 @@ app.post('/bills', authenticateToken, async (req, res) => {
         value.bill_date,
         value.due_date || null,
         value.usage_amount || null,
+        value.payment_status || 'need_payment',
         value.notes || null,
       ]
     );
@@ -372,6 +379,37 @@ app.post('/bills', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Create bill error:', error);
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to create bill' } });
+  }
+});
+
+// Update bill payment status (must be before /bills/:id to match first)
+app.put('/bills/:id/status', authenticateToken, async (req, res) => {
+  try {
+    const billId = req.params.id;
+    const { error, value } = billStatusSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.details[0].message } });
+    }
+
+    // Check if bill exists and belongs to user
+    const existing = await pool.query('SELECT user_id FROM bills WHERE id = $1', [billId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Bill not found' } });
+    }
+
+    if (existing.rows[0].user_id !== req.user.userId) {
+      return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not authorized to update this bill' } });
+    }
+
+    const result = await pool.query(
+      `UPDATE bills SET payment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      [value.payment_status, billId]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update bill status error:', error);
+    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to update bill status' } });
   }
 });
 
@@ -443,6 +481,12 @@ app.put('/bills/:id', authenticateToken, async (req, res) => {
     if (value.notes !== undefined) {
       updates.push(`notes = $${paramCount}`);
       values.push(value.notes);
+      paramCount++;
+    }
+
+    if (value.payment_status !== undefined) {
+      updates.push(`payment_status = $${paramCount}`);
+      values.push(value.payment_status);
       paramCount++;
     }
 
@@ -523,10 +567,10 @@ app.post('/recurring', authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO recurring_bills (user_id, utility_type_id, amount, day_of_month, notes) 
-       VALUES ($1, $2, $3, $4, $5) 
+      `INSERT INTO recurring_bills (user_id, utility_type_id, amount, day_of_month, payment_status, notes) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
        RETURNING *`,
-      [req.user.userId, value.utility_type_id, value.amount, value.day_of_month, value.notes || null]
+      [req.user.userId, value.utility_type_id, value.amount, value.day_of_month, value.payment_status || 'need_payment', value.notes || null]
     );
 
     res.status(201).json(result.rows[0]);
@@ -555,13 +599,29 @@ app.put('/recurring/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not authorized' } });
     }
 
+    // Get the old recurring bill data to check if utility_type changed
+    const oldRecurring = await pool.query('SELECT utility_type_id FROM recurring_bills WHERE id = $1', [recurringId]);
+    const oldUtilityTypeId = oldRecurring.rows[0].utility_type_id;
+
     const result = await pool.query(
       `UPDATE recurring_bills 
-       SET utility_type_id = $1, amount = $2, day_of_month = $3, notes = $4, is_active = $5, updated_at = CURRENT_TIMESTAMP 
-       WHERE id = $6 
+       SET utility_type_id = $1, amount = $2, day_of_month = $3, payment_status = $4, notes = $5, is_active = $6, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $7 
        RETURNING *`,
-      [value.utility_type_id, value.amount, value.day_of_month, value.notes || null, value.is_active !== false, recurringId]
+      [value.utility_type_id, value.amount, value.day_of_month, value.payment_status || 'need_payment', value.notes || null, value.is_active !== false, recurringId]
     );
+
+    // Also update payment_status on all auto-generated bills from this recurring template
+    if (value.payment_status) {
+      await pool.query(
+        `UPDATE bills 
+         SET payment_status = $1, updated_at = CURRENT_TIMESTAMP 
+         WHERE user_id = $2 
+           AND utility_type_id = $3 
+           AND notes LIKE '[Auto]%'`,
+        [value.payment_status, req.user.userId, oldUtilityTypeId]
+      );
+    }
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -618,14 +678,15 @@ app.post('/recurring/process', authenticateToken, async (req, res) => {
       const billDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(recurring.day_of_month).padStart(2, '0')}`;
       
       const billResult = await pool.query(
-        `INSERT INTO bills (user_id, utility_type_id, amount, bill_date, notes) 
-         VALUES ($1, $2, $3, $4, $5) 
+        `INSERT INTO bills (user_id, utility_type_id, amount, bill_date, payment_status, notes) 
+         VALUES ($1, $2, $3, $4, $5, $6) 
          RETURNING *`,
         [
           req.user.userId, 
           recurring.utility_type_id, 
           recurring.amount, 
           billDateStr,
+          recurring.payment_status || 'need_payment',
           recurring.notes ? `[Auto] ${recurring.notes}` : '[Auto] Recurring bill'
         ]
       );

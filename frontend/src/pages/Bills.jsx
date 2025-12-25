@@ -39,6 +39,16 @@ import RepeatIcon from '@mui/icons-material/Repeat';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ClearIcon from '@mui/icons-material/Clear';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import CreditScoreIcon from '@mui/icons-material/CreditScore';
+
+// Payment status configuration
+const PAYMENT_STATUSES = {
+  need_payment: { label: 'Need Payment', color: 'warning', icon: ScheduleIcon },
+  paid: { label: 'Paid', color: 'success', icon: CheckCircleIcon },
+  auto_pay: { label: 'Auto Pay', color: 'info', icon: CreditScoreIcon },
+};
 import api from '../services/api';
 import { format } from 'date-fns';
 
@@ -69,6 +79,7 @@ export default function Bills() {
     bill_date: format(new Date(), 'yyyy-MM-dd'),
     due_date: '',
     usage_amount: '',
+    payment_status: 'need_payment',
     notes: '',
     is_recurring: false,
     recurring_day: '1',
@@ -94,6 +105,7 @@ export default function Bills() {
     utility_type_id: '',
     amount: '',
     day_of_month: '1',
+    payment_status: 'need_payment',
     notes: '',
   });
   const [recurringError, setRecurringError] = useState('');
@@ -164,6 +176,7 @@ export default function Bills() {
         bill_date: bill.bill_date,
         due_date: bill.due_date || '',
         usage_amount: bill.usage_amount || '',
+        payment_status: bill.payment_status || 'need_payment',
         notes: bill.notes || '',
         is_recurring: false,
         recurring_day: '1',
@@ -176,6 +189,7 @@ export default function Bills() {
         bill_date: format(new Date(), 'yyyy-MM-dd'),
         due_date: '',
         usage_amount: '',
+        payment_status: 'need_payment',
         notes: '',
         is_recurring: false,
         recurring_day: new Date().getDate().toString(),
@@ -201,6 +215,7 @@ export default function Bills() {
         bill_date: formData.bill_date,
         due_date: formData.due_date || null,
         usage_amount: formData.usage_amount || null,
+        payment_status: formData.payment_status,
         notes: formData.notes,
       };
       
@@ -334,6 +349,7 @@ export default function Bills() {
         utility_type_id: recurring.utility_type_id,
         amount: recurring.amount,
         day_of_month: recurring.day_of_month.toString(),
+        payment_status: recurring.payment_status || 'need_payment',
         notes: recurring.notes || '',
       });
     } else {
@@ -342,6 +358,7 @@ export default function Bills() {
         utility_type_id: '',
         amount: '',
         day_of_month: '1',
+        payment_status: 'need_payment',
         notes: '',
       });
     }
@@ -356,6 +373,7 @@ export default function Bills() {
       utility_type_id: '',
       amount: '',
       day_of_month: '1',
+      payment_status: 'need_payment',
       notes: '',
     });
     setRecurringError('');
@@ -405,6 +423,23 @@ export default function Bills() {
     } catch (err) {
       setRecurringError(err.response?.data?.error?.message || 'Failed to update recurring bill');
     }
+  };
+
+  // Update bill payment status
+  const handleStatusChange = async (billId, newStatus) => {
+    try {
+      await api.put(`/utilities/bills/${billId}/status`, { payment_status: newStatus });
+      fetchBills();
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to update bill status');
+    }
+  };
+
+  // Get next status in cycle: need_payment -> paid -> auto_pay -> need_payment
+  const getNextStatus = (currentStatus) => {
+    const statuses = ['need_payment', 'paid', 'auto_pay'];
+    const currentIndex = statuses.indexOf(currentStatus || 'need_payment');
+    return statuses[(currentIndex + 1) % statuses.length];
   };
 
   if (loading && bills.length === 0) {
@@ -502,49 +537,69 @@ export default function Bills() {
               <TableCell>Bill Date</TableCell>
               <TableCell>Due Date</TableCell>
               <TableCell>Usage</TableCell>
+              <TableCell>Status</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredBills.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center">
+                <TableCell colSpan={7} align="center">
                   {filterUtilityType ? 'No bills found for this utility type' : 'No bills found'}
                 </TableCell>
               </TableRow>
             ) : (
-              filteredBills.map((bill) => (
-                <TableRow key={bill.id}>
-                  <TableCell>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      {bill.utility_type_name}
-                      {bill.notes?.includes('[Auto]') && (
-                        <Chip 
-                          icon={<RepeatIcon sx={{ fontSize: 14 }} />}
-                          label="Recurring" 
-                          size="small" 
-                          color="primary"
-                          variant="outlined"
-                          sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.7rem' } }}
+              filteredBills.map((bill) => {
+                const status = bill.payment_status || 'need_payment';
+                const statusConfig = PAYMENT_STATUSES[status];
+                const StatusIcon = statusConfig.icon;
+                return (
+                  <TableRow key={bill.id}>
+                    <TableCell>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        {bill.utility_type_name}
+                        {bill.notes?.includes('[Auto]') && (
+                          <Chip 
+                            icon={<RepeatIcon sx={{ fontSize: 14 }} />}
+                            label="Recurring" 
+                            size="small" 
+                            color="primary"
+                            variant="outlined"
+                            sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.7rem' } }}
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>${parseFloat(bill.amount).toFixed(2)}</TableCell>
+                    <TableCell>{formatDate(bill.bill_date)}</TableCell>
+                    <TableCell>{formatDate(bill.due_date)}</TableCell>
+                    <TableCell>{bill.usage_amount || '-'}</TableCell>
+                    <TableCell>
+                      <Tooltip title="Click to change status">
+                        <Chip
+                          icon={<StatusIcon sx={{ fontSize: 16 }} />}
+                          label={statusConfig.label}
+                          color={statusConfig.color}
+                          size="small"
+                          onClick={() => handleStatusChange(bill.id, getNextStatus(status))}
+                          sx={{ 
+                            cursor: 'pointer',
+                            '&:hover': { opacity: 0.85 },
+                          }}
                         />
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>${parseFloat(bill.amount).toFixed(2)}</TableCell>
-                  <TableCell>{formatDate(bill.bill_date)}</TableCell>
-                  <TableCell>{formatDate(bill.due_date)}
-                  </TableCell>
-                  <TableCell>{bill.usage_amount || '-'}</TableCell>
-                  <TableCell>
-                    <IconButton size="small" onClick={() => handleOpen(bill)}>
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => handleDelete(bill.id)}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <IconButton size="small" onClick={() => handleOpen(bill)}>
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => handleDelete(bill.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -613,6 +668,26 @@ export default function Bills() {
               onChange={(e) => setFormData({ ...formData, usage_amount: e.target.value })}
               margin="normal"
             />
+            <TextField
+              select
+              fullWidth
+              label="Payment Status"
+              value={formData.payment_status}
+              onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}
+              margin="normal"
+            >
+              {Object.entries(PAYMENT_STATUSES).map(([value, config]) => {
+                const StatusIcon = config.icon;
+                return (
+                  <MenuItem key={value} value={value}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <StatusIcon fontSize="small" color={config.color} />
+                      {config.label}
+                    </Box>
+                  </MenuItem>
+                );
+              })}
+            </TextField>
             <TextField
               fullWidth
               label="Notes"
@@ -889,6 +964,27 @@ export default function Bills() {
                 ))}
               </TextField>
               <TextField
+                select
+                fullWidth
+                label="Payment Status"
+                value={recurringFormData.payment_status}
+                onChange={(e) => setRecurringFormData({ ...recurringFormData, payment_status: e.target.value })}
+                margin="normal"
+                helperText="New bills will be created with this status"
+              >
+                {Object.entries(PAYMENT_STATUSES).map(([value, config]) => {
+                  const StatusIcon = config.icon;
+                  return (
+                    <MenuItem key={value} value={value}>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <StatusIcon fontSize="small" color={config.color} />
+                        {config.label}
+                      </Box>
+                    </MenuItem>
+                  );
+                })}
+              </TextField>
+              <TextField
                 fullWidth
                 label="Notes (Optional)"
                 value={recurringFormData.notes}
@@ -930,7 +1026,7 @@ export default function Bills() {
                       >
                         <ListItemText
                           primary={
-                            <Box display="flex" alignItems="center" gap={1}>
+                            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
                               <Typography fontWeight="medium">
                                 {recurring.utility_type_name}
                               </Typography>
@@ -939,6 +1035,20 @@ export default function Bills() {
                                 label={`$${parseFloat(recurring.amount).toFixed(2)}`}
                                 color="primary"
                               />
+                              {(() => {
+                                const status = recurring.payment_status || 'need_payment';
+                                const statusConfig = PAYMENT_STATUSES[status];
+                                const StatusIcon = statusConfig.icon;
+                                return (
+                                  <Chip
+                                    size="small"
+                                    icon={<StatusIcon sx={{ fontSize: 14 }} />}
+                                    label={statusConfig.label}
+                                    color={statusConfig.color}
+                                    variant="outlined"
+                                  />
+                                );
+                              })()}
                               {!recurring.is_active && (
                                 <Chip size="small" label="Paused" color="default" />
                               )}

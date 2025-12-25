@@ -37,6 +37,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SettingsIcon from '@mui/icons-material/Settings';
 import RepeatIcon from '@mui/icons-material/Repeat';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import ClearIcon from '@mui/icons-material/Clear';
 import api from '../services/api';
 import { format } from 'date-fns';
 
@@ -95,6 +97,14 @@ export default function Bills() {
     notes: '',
   });
   const [recurringError, setRecurringError] = useState('');
+
+  // Filter State
+  const [filterUtilityType, setFilterUtilityType] = useState('');
+
+  // Filtered bills based on utility type selection
+  const filteredBills = filterUtilityType
+    ? bills.filter((bill) => bill.utility_type_id === filterUtilityType)
+    : bills;
 
   useEffect(() => {
     fetchBills();
@@ -409,7 +419,7 @@ export default function Bills() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Bills</Typography>
-        <Box display="flex" gap={2}>
+        <Box display="flex" gap={2} alignItems="center">
           {recurringBills.length > 0 && (
             <Chip
               icon={<RepeatIcon />}
@@ -433,6 +443,50 @@ export default function Bills() {
         </Box>
       </Box>
 
+      {/* Filter by Utility Type */}
+      <Box display="flex" alignItems="center" gap={2} mb={2}>
+        <FilterListIcon color="action" />
+        <TextField
+          select
+          size="small"
+          label="Filter by Utility Type"
+          value={filterUtilityType}
+          onChange={(e) => setFilterUtilityType(e.target.value)}
+          sx={{ minWidth: 220 }}
+          InputProps={{
+            endAdornment: filterUtilityType && (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  onClick={() => setFilterUtilityType('')}
+                  edge="end"
+                  sx={{ mr: 1 }}
+                >
+                  <ClearIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        >
+          <MenuItem value="">
+            <em>All Utility Types</em>
+          </MenuItem>
+          {utilityTypes.map((type) => (
+            <MenuItem key={type.id} value={type.id}>
+              {type.name}
+            </MenuItem>
+          ))}
+        </TextField>
+        {filterUtilityType && (
+          <Chip
+            label={`Showing ${filteredBills.length} of ${bills.length} bills`}
+            size="small"
+            color="primary"
+            variant="outlined"
+          />
+        )}
+      </Box>
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
@@ -452,14 +506,14 @@ export default function Bills() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {bills.length === 0 ? (
+            {filteredBills.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} align="center">
-                  No bills found
+                  {filterUtilityType ? 'No bills found for this utility type' : 'No bills found'}
                 </TableCell>
               </TableRow>
             ) : (
-              bills.map((bill) => (
+              filteredBills.map((bill) => (
                 <TableRow key={bill.id}>
                   <TableCell>
                     <Box display="flex" alignItems="center" gap={1}>

@@ -23,8 +23,20 @@ import {
   DialogActions,
   InputAdornment,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  OutlinedInput,
+  Checkbox,
+  ListItemText,
+  IconButton,
+  Collapse,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import {
   LineChart,
   Line,
@@ -78,6 +90,11 @@ export default function Analytics() {
   });
   const [quickAddError, setQuickAddError] = useState('');
 
+  // Monthly Breakdown filter/view state
+  const [selectedUtilityTypes, setSelectedUtilityTypes] = useState([]);
+  const [expandedRows, setExpandedRows] = useState({});
+  const [breakdownViewMode, setBreakdownViewMode] = useState('table'); // 'table' or 'compact'
+
   useEffect(() => {
     fetchAnalytics();
   }, []);
@@ -96,11 +113,34 @@ export default function Analytics() {
       setCostTrends(costTrendsRes.data.data);
       setUsageTrends(usageTrendsRes.data.data);
       setSummary(summaryRes.data);
+      // Initialize selected utility types to show all (or first 5 if more than 5)
+      const types = summaryRes.data?.by_utility_type || [];
+      if (selectedUtilityTypes.length === 0) {
+        setSelectedUtilityTypes(types.slice(0, 5).map(t => t.utility_type_id));
+      }
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to load analytics');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle utility type filter change
+  const handleUtilityTypeFilterChange = (event) => {
+    const value = event.target.value;
+    setSelectedUtilityTypes(typeof value === 'string' ? value.split(',') : value);
+  };
+
+  // Toggle row expansion for compact view
+  const toggleRowExpansion = (period) => {
+    setExpandedRows(prev => ({ ...prev, [period]: !prev[period] }));
+  };
+
+  // Get filtered utility types for display
+  const getFilteredUtilityTypes = () => {
+    if (!summary?.by_utility_type) return [];
+    if (selectedUtilityTypes.length === 0) return summary.by_utility_type;
+    return summary.by_utility_type.filter(t => selectedUtilityTypes.includes(t.utility_type_id));
   };
 
   const handleDateChange = (field, value) => {
@@ -302,107 +342,356 @@ export default function Analytics() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Monthly Breakdown
-              </Typography>
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: 'grey.100' }}>
-                      <TableCell><strong>Month</strong></TableCell>
-                      {summary?.by_utility_type?.map((type, index) => (
-                        <TableCell key={type.utility_type_id} align="right">
-                          <Chip 
-                            size="small" 
-                            label={type.utility_type_name}
-                            sx={{ bgcolor: COLORS[index % COLORS.length], color: 'white' }}
-                          />
+              {/* Header with title and controls */}
+              <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                <Typography variant="h6">
+                  Monthly Breakdown
+                </Typography>
+                <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+                  {/* View mode toggle */}
+                  <Box display="flex" gap={0.5}>
+                    <Chip
+                      label="Table"
+                      size="small"
+                      onClick={() => setBreakdownViewMode('table')}
+                      color={breakdownViewMode === 'table' ? 'primary' : 'default'}
+                      variant={breakdownViewMode === 'table' ? 'filled' : 'outlined'}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                    <Chip
+                      label="Compact"
+                      size="small"
+                      onClick={() => setBreakdownViewMode('compact')}
+                      color={breakdownViewMode === 'compact' ? 'primary' : 'default'}
+                      variant={breakdownViewMode === 'compact' ? 'filled' : 'outlined'}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  </Box>
+                  
+                  {/* Utility Type Filter */}
+                  {summary?.by_utility_type?.length > 3 && (
+                    <FormControl size="small" sx={{ minWidth: 200, maxWidth: 300 }}>
+                      <InputLabel id="utility-type-filter-label">
+                        <Box display="flex" alignItems="center" gap={0.5}>
+                          <FilterListIcon sx={{ fontSize: 16 }} />
+                          Show Types
+                        </Box>
+                      </InputLabel>
+                      <Select
+                        labelId="utility-type-filter-label"
+                        multiple
+                        value={selectedUtilityTypes}
+                        onChange={handleUtilityTypeFilterChange}
+                        input={<OutlinedInput label="Show Types ___" />}
+                        renderValue={(selected) => 
+                          `${selected.length} of ${summary?.by_utility_type?.length} types`
+                        }
+                        MenuProps={{
+                          PaperProps: { style: { maxHeight: 300 } },
+                        }}
+                      >
+                        <MenuItem 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setSelectedUtilityTypes(summary?.by_utility_type?.map(t => t.utility_type_id) || []);
+                          }}
+                        >
+                          <ListItemText primary="Select All" primaryTypographyProps={{ fontWeight: 'bold' }} />
+                        </MenuItem>
+                        <MenuItem 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setSelectedUtilityTypes([]);
+                          }}
+                        >
+                          <ListItemText primary="Clear All" primaryTypographyProps={{ fontWeight: 'bold' }} />
+                        </MenuItem>
+                        {summary?.by_utility_type?.map((type, index) => (
+                          <MenuItem key={type.utility_type_id} value={type.utility_type_id}>
+                            <Checkbox checked={selectedUtilityTypes.includes(type.utility_type_id)} />
+                            <Box 
+                              sx={{ 
+                                width: 12, 
+                                height: 12, 
+                                borderRadius: '50%', 
+                                bgcolor: COLORS[index % COLORS.length],
+                                mr: 1,
+                              }} 
+                            />
+                            <ListItemText primary={type.utility_type_name} />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                </Box>
+              </Box>
+
+              {breakdownViewMode === 'table' ? (
+                /* Table View - with horizontal scroll and sticky columns */
+                <TableContainer 
+                  component={Paper} 
+                  variant="outlined"
+                  sx={{ 
+                    maxWidth: '100%',
+                    overflowX: 'auto',
+                    '& .sticky-left': {
+                      position: 'sticky',
+                      left: 0,
+                      bgcolor: 'background.paper',
+                      zIndex: 2,
+                      borderRight: '2px solid',
+                      borderColor: 'divider',
+                    },
+                    '& .sticky-right': {
+                      position: 'sticky',
+                      right: 0,
+                      bgcolor: 'background.paper',
+                      zIndex: 2,
+                      borderLeft: '2px solid',
+                      borderColor: 'divider',
+                    },
+                  }}
+                >
+                  <Table size="small" sx={{ minWidth: getFilteredUtilityTypes().length > 4 ? 800 : 'auto' }}>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: 'grey.100' }}>
+                        <TableCell className="sticky-left" sx={{ bgcolor: 'grey.100' }}>
+                          <strong>Month</strong>
                         </TableCell>
-                      ))}
-                      <TableCell align="right"><strong>Total</strong></TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {Object.keys(costByPeriod)
-                      .sort()
-                      .reverse()
-                      .map((period) => {
-                        const monthTotal = Object.values(costByPeriod[period]).reduce((sum, val) => sum + val, 0);
-                        const isHighest = summary?.by_utility_type && monthTotal === Math.max(
-                          ...Object.keys(costByPeriod).map(p => 
-                            Object.values(costByPeriod[p]).reduce((sum, val) => sum + val, 0)
-                          )
-                        );
-                        const isLowest = summary?.by_utility_type && monthTotal === Math.min(
-                          ...Object.keys(costByPeriod).map(p => 
-                            Object.values(costByPeriod[p]).reduce((sum, val) => sum + val, 0)
-                          )
-                        );
-                        return (
-                          <TableRow 
-                            key={period}
-                            sx={{ 
-                              bgcolor: isHighest ? 'error.lighter' : isLowest ? 'success.lighter' : 'inherit',
-                              '&:hover': { bgcolor: 'action.hover' }
-                            }}
-                          >
-                            <TableCell>
-                              {formatPeriod(period)}
-                              {isHighest && <Chip size="small" label="Highest" color="error" sx={{ ml: 1 }} />}
-                              {isLowest && <Chip size="small" label="Lowest" color="success" sx={{ ml: 1 }} />}
+                        {getFilteredUtilityTypes().map((type, index) => {
+                          const originalIndex = summary?.by_utility_type?.findIndex(t => t.utility_type_id === type.utility_type_id);
+                          return (
+                            <TableCell key={type.utility_type_id} align="right" sx={{ whiteSpace: 'nowrap' }}>
+                              <Tooltip title={type.utility_type_name}>
+                                <Chip 
+                                  size="small" 
+                                  label={type.utility_type_name.length > 10 
+                                    ? type.utility_type_name.substring(0, 8) + '…' 
+                                    : type.utility_type_name}
+                                  sx={{ 
+                                    bgcolor: COLORS[originalIndex % COLORS.length], 
+                                    color: 'white',
+                                    maxWidth: 100,
+                                  }}
+                                />
+                              </Tooltip>
                             </TableCell>
-                            {summary?.by_utility_type?.map((type) => {
-                              const hasValue = costByPeriod[period][type.utility_type_name];
-                              return (
-                                <TableCell 
-                                  key={type.utility_type_id} 
-                                  align="right"
-                                  onClick={!hasValue ? () => handleQuickAdd(period, type) : undefined}
-                                  sx={!hasValue ? { 
-                                    cursor: 'pointer',
-                                    '&:hover': { 
-                                      bgcolor: 'primary.light',
-                                      color: 'primary.contrastText',
-                                    },
-                                  } : {}}
-                                >
-                                  {hasValue ? (
-                                    `$${hasValue.toFixed(2)}`
-                                  ) : (
-                                    <Tooltip title={`Add ${type.utility_type_name} bill for ${formatPeriod(period)}`}>
-                                      <Box 
-                                        component="span" 
-                                        sx={{ 
-                                          display: 'inline-flex', 
-                                          alignItems: 'center',
-                                          color: 'text.disabled',
-                                          '&:hover': { color: 'inherit' },
-                                        }}
-                                      >
-                                        <AddIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                                        Add
-                                      </Box>
-                                    </Tooltip>
-                                  )}
-                                </TableCell>
-                              );
-                            })}
-                            <TableCell align="right">
-                              <strong>${monthTotal.toFixed(2)}</strong>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    {Object.keys(costByPeriod).length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={(summary?.by_utility_type?.length || 0) + 2} align="center">
-                          No data available for this period
+                          );
+                        })}
+                        <TableCell className="sticky-right" align="right" sx={{ bgcolor: 'grey.100' }}>
+                          <strong>Total</strong>
                         </TableCell>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {Object.keys(costByPeriod)
+                        .sort()
+                        .reverse()
+                        .map((period) => {
+                          const monthTotal = Object.values(costByPeriod[period]).reduce((sum, val) => sum + val, 0);
+                          const isHighest = summary?.by_utility_type && monthTotal === Math.max(
+                            ...Object.keys(costByPeriod).map(p => 
+                              Object.values(costByPeriod[p]).reduce((sum, val) => sum + val, 0)
+                            )
+                          );
+                          const isLowest = summary?.by_utility_type && monthTotal === Math.min(
+                            ...Object.keys(costByPeriod).map(p => 
+                              Object.values(costByPeriod[p]).reduce((sum, val) => sum + val, 0)
+                            )
+                          );
+                          const rowBgColor = isHighest ? 'error.lighter' : isLowest ? 'success.lighter' : 'inherit';
+                          return (
+                            <TableRow 
+                              key={period}
+                              sx={{ 
+                                bgcolor: rowBgColor,
+                                '&:hover': { bgcolor: 'action.hover' }
+                              }}
+                            >
+                              <TableCell className="sticky-left" sx={{ bgcolor: rowBgColor }}>
+                                <Box display="flex" alignItems="center" gap={0.5} flexWrap="wrap">
+                                  {formatPeriod(period)}
+                                  {isHighest && <Chip size="small" label="High" color="error" sx={{ height: 20, fontSize: '0.7rem' }} />}
+                                  {isLowest && <Chip size="small" label="Low" color="success" sx={{ height: 20, fontSize: '0.7rem' }} />}
+                                </Box>
+                              </TableCell>
+                              {getFilteredUtilityTypes().map((type) => {
+                                const hasValue = costByPeriod[period][type.utility_type_name];
+                                return (
+                                  <TableCell 
+                                    key={type.utility_type_id} 
+                                    align="right"
+                                    onClick={!hasValue ? () => handleQuickAdd(period, type) : undefined}
+                                    sx={!hasValue ? { 
+                                      cursor: 'pointer',
+                                      '&:hover': { 
+                                        bgcolor: 'primary.light',
+                                        color: 'primary.contrastText',
+                                      },
+                                    } : { whiteSpace: 'nowrap' }}
+                                  >
+                                    {hasValue ? (
+                                      `$${hasValue.toFixed(2)}`
+                                    ) : (
+                                      <Tooltip title={`Add ${type.utility_type_name} bill for ${formatPeriod(period)}`}>
+                                        <Box 
+                                          component="span" 
+                                          sx={{ 
+                                            display: 'inline-flex', 
+                                            alignItems: 'center',
+                                            color: 'text.disabled',
+                                            '&:hover': { color: 'inherit' },
+                                          }}
+                                        >
+                                          <AddIcon sx={{ fontSize: 16, mr: 0.5 }} />
+                                          Add
+                                        </Box>
+                                      </Tooltip>
+                                    )}
+                                  </TableCell>
+                                );
+                              })}
+                              <TableCell className="sticky-right" align="right" sx={{ bgcolor: rowBgColor }}>
+                                <strong>${monthTotal.toFixed(2)}</strong>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      {Object.keys(costByPeriod).length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={(getFilteredUtilityTypes().length || 0) + 2} align="center">
+                            No data available for this period
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                /* Compact View - expandable rows showing only total, with breakdown on expand */
+                <Box>
+                  {Object.keys(costByPeriod)
+                    .sort()
+                    .reverse()
+                    .map((period) => {
+                      const monthTotal = Object.values(costByPeriod[period]).reduce((sum, val) => sum + val, 0);
+                      const isHighest = summary?.by_utility_type && monthTotal === Math.max(
+                        ...Object.keys(costByPeriod).map(p => 
+                          Object.values(costByPeriod[p]).reduce((sum, val) => sum + val, 0)
+                        )
+                      );
+                      const isLowest = summary?.by_utility_type && monthTotal === Math.min(
+                        ...Object.keys(costByPeriod).map(p => 
+                          Object.values(costByPeriod[p]).reduce((sum, val) => sum + val, 0)
+                        )
+                      );
+                      const isExpanded = expandedRows[period];
+                      
+                      return (
+                        <Paper 
+                          key={period}
+                          variant="outlined"
+                          sx={{ 
+                            mb: 1,
+                            overflow: 'hidden',
+                            bgcolor: isHighest ? 'error.lighter' : isLowest ? 'success.lighter' : 'background.paper',
+                          }}
+                        >
+                          {/* Summary Row */}
+                          <Box 
+                            display="flex" 
+                            alignItems="center" 
+                            justifyContent="space-between"
+                            sx={{ 
+                              p: 1.5,
+                              cursor: 'pointer',
+                              '&:hover': { bgcolor: 'action.hover' },
+                            }}
+                            onClick={() => toggleRowExpansion(period)}
+                          >
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <IconButton size="small" sx={{ p: 0.5 }}>
+                                {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                              </IconButton>
+                              <Typography fontWeight="medium">
+                                {formatPeriod(period)}
+                              </Typography>
+                              {isHighest && <Chip size="small" label="Highest" color="error" />}
+                              {isLowest && <Chip size="small" label="Lowest" color="success" />}
+                            </Box>
+                            <Typography variant="h6" fontWeight="bold">
+                              ${monthTotal.toFixed(2)}
+                            </Typography>
+                          </Box>
+                          
+                          {/* Expanded Breakdown */}
+                          <Collapse in={isExpanded}>
+                            <Box sx={{ px: 2, pb: 2, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                              <Grid container spacing={1}>
+                                {getFilteredUtilityTypes().map((type, index) => {
+                                  const originalIndex = summary?.by_utility_type?.findIndex(t => t.utility_type_id === type.utility_type_id);
+                                  const value = costByPeriod[period][type.utility_type_name];
+                                  return (
+                                    <Grid item xs={6} sm={4} md={3} key={type.utility_type_id}>
+                                      <Box 
+                                        sx={{ 
+                                          display: 'flex', 
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          p: 1,
+                                          borderRadius: 1,
+                                          bgcolor: 'grey.50',
+                                          cursor: !value ? 'pointer' : 'default',
+                                          '&:hover': !value ? { bgcolor: 'primary.light' } : {},
+                                        }}
+                                        onClick={() => !value && handleQuickAdd(period, type)}
+                                      >
+                                        <Box display="flex" alignItems="center" gap={0.5}>
+                                          <Box 
+                                            sx={{ 
+                                              width: 8, 
+                                              height: 8, 
+                                              borderRadius: '50%', 
+                                              bgcolor: COLORS[originalIndex % COLORS.length],
+                                            }} 
+                                          />
+                                          <Typography variant="body2" noWrap sx={{ maxWidth: 80 }}>
+                                            {type.utility_type_name}
+                                          </Typography>
+                                        </Box>
+                                        <Typography variant="body2" fontWeight="medium">
+                                          {value ? `$${value.toFixed(2)}` : (
+                                            <Box component="span" sx={{ color: 'text.disabled', display: 'flex', alignItems: 'center' }}>
+                                              <AddIcon sx={{ fontSize: 14 }} />
+                                            </Box>
+                                          )}
+                                        </Typography>
+                                      </Box>
+                                    </Grid>
+                                  );
+                                })}
+                              </Grid>
+                            </Box>
+                          </Collapse>
+                        </Paper>
+                      );
+                    })}
+                  {Object.keys(costByPeriod).length === 0 && (
+                    <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+                      <Typography color="text.secondary">No data available for this period</Typography>
+                    </Paper>
+                  )}
+                </Box>
+              )}
+              
+              {/* Footer info */}
+              {summary?.by_utility_type?.length > 3 && selectedUtilityTypes.length < summary.by_utility_type.length && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Showing {selectedUtilityTypes.length} of {summary.by_utility_type.length} utility types. 
+                  Use the filter to show more.
+                </Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>

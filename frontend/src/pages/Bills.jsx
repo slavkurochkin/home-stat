@@ -52,15 +52,31 @@ const PAYMENT_STATUSES = {
 import api from '../services/api';
 import { format } from 'date-fns';
 
+// Get today's date as YYYY-MM-DD string in local timezone
+const getLocalDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // Safe date formatter to handle timezone issues
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
   try {
-    // Handle both ISO strings and date-only strings
-    const date = dateStr.includes('T') 
-      ? new Date(dateStr) 
-      : new Date(dateStr + 'T12:00:00');
-    return format(date, 'MMM dd, yyyy');
+    // If it's already a plain date string (YYYY-MM-DD), parse it correctly
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-');
+      return format(new Date(year, month - 1, day), 'MMM dd, yyyy');
+    }
+    // Handle ISO strings by extracting just the date part
+    if (dateStr.includes('T')) {
+      const datePart = dateStr.split('T')[0];
+      const [year, month, day] = datePart.split('-');
+      return format(new Date(year, month - 1, day), 'MMM dd, yyyy');
+    }
+    return dateStr;
   } catch {
     return dateStr;
   }
@@ -76,7 +92,7 @@ export default function Bills() {
   const [formData, setFormData] = useState({
     utility_type_id: '',
     amount: '',
-    bill_date: format(new Date(), 'yyyy-MM-dd'),
+    bill_date: getLocalDateString(),
     due_date: '',
     usage_amount: '',
     payment_status: 'need_payment',
@@ -167,14 +183,24 @@ export default function Bills() {
     }
   };
 
+  // Extract date part from a date string (handles both YYYY-MM-DD and ISO formats)
+  const extractDatePart = (dateStr) => {
+    if (!dateStr) return '';
+    // If it's an ISO string, extract just the date part
+    if (dateStr.includes('T')) {
+      return dateStr.split('T')[0];
+    }
+    return dateStr;
+  };
+
   const handleOpen = (bill = null) => {
     if (bill) {
       setEditingBill(bill);
       setFormData({
         utility_type_id: bill.utility_type_id,
         amount: bill.amount,
-        bill_date: bill.bill_date,
-        due_date: bill.due_date || '',
+        bill_date: extractDatePart(bill.bill_date),
+        due_date: extractDatePart(bill.due_date) || '',
         usage_amount: bill.usage_amount || '',
         payment_status: bill.payment_status || 'need_payment',
         notes: bill.notes || '',
@@ -186,7 +212,7 @@ export default function Bills() {
       setFormData({
         utility_type_id: '',
         amount: '',
-        bill_date: format(new Date(), 'yyyy-MM-dd'),
+        bill_date: getLocalDateString(),
         due_date: '',
         usage_amount: '',
         payment_status: 'need_payment',

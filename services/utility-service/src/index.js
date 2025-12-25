@@ -54,8 +54,8 @@ const utilityTypeSchema = Joi.object({
 const billSchema = Joi.object({
   utility_type_id: Joi.string().uuid().required(),
   amount: Joi.number().positive().precision(2).required(),
-  bill_date: Joi.date().required(),
-  due_date: Joi.date().allow(null).optional(),
+  bill_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+  due_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(null, '').optional(),
   usage_amount: Joi.number().positive().precision(2).allow(null).optional(),
   payment_status: Joi.string().valid('need_payment', 'paid', 'auto_pay').optional(),
   notes: Joi.string().allow('', null).optional(),
@@ -252,7 +252,12 @@ app.get('/bills', authenticateToken, async (req, res) => {
     const { utility_type_id, start_date, end_date, page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    let query = 'SELECT b.*, ut.name as utility_type_name FROM bills b INNER JOIN utility_types ut ON b.utility_type_id = ut.id WHERE b.user_id = $1';
+    let query = `SELECT b.id, b.user_id, b.household_id, b.utility_type_id, b.amount, 
+       TO_CHAR(b.bill_date, 'YYYY-MM-DD') as bill_date, 
+       TO_CHAR(b.due_date, 'YYYY-MM-DD') as due_date, 
+       b.usage_amount, b.payment_status, b.notes, b.created_at, b.updated_at,
+       ut.name as utility_type_name 
+       FROM bills b INNER JOIN utility_types ut ON b.utility_type_id = ut.id WHERE b.user_id = $1`;
     const values = [req.user.userId];
     let paramCount = 2;
 
@@ -303,7 +308,11 @@ app.get('/bills/:id', authenticateToken, async (req, res) => {
     const billId = req.params.id;
 
     const result = await pool.query(
-      `SELECT b.*, ut.name as utility_type_name 
+      `SELECT b.id, b.user_id, b.household_id, b.utility_type_id, b.amount, 
+       TO_CHAR(b.bill_date, 'YYYY-MM-DD') as bill_date, 
+       TO_CHAR(b.due_date, 'YYYY-MM-DD') as due_date, 
+       b.usage_amount, b.payment_status, b.notes, b.created_at, b.updated_at,
+       ut.name as utility_type_name 
        FROM bills b 
        INNER JOIN utility_types ut ON b.utility_type_id = ut.id 
        WHERE b.id = $1 AND b.user_id = $2`,
@@ -354,7 +363,10 @@ app.post('/bills', authenticateToken, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO bills (user_id, household_id, utility_type_id, amount, bill_date, due_date, usage_amount, payment_status, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, user_id, household_id, utility_type_id, amount, bill_date, due_date, usage_amount, payment_status, notes, created_at`,
+       RETURNING id, user_id, household_id, utility_type_id, amount, 
+       TO_CHAR(bill_date, 'YYYY-MM-DD') as bill_date, 
+       TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, 
+       usage_amount, payment_status, notes, created_at`,
       [
         req.user.userId,
         value.household_id || null,
@@ -402,7 +414,11 @@ app.put('/bills/:id/status', authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      `UPDATE bills SET payment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      `UPDATE bills SET payment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 
+       RETURNING id, user_id, household_id, utility_type_id, amount, 
+       TO_CHAR(bill_date, 'YYYY-MM-DD') as bill_date, 
+       TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, 
+       usage_amount, payment_status, notes, created_at, updated_at`,
       [value.payment_status, billId]
     );
 
@@ -495,7 +511,11 @@ app.put('/bills/:id', authenticateToken, async (req, res) => {
     }
 
     values.push(billId);
-    const query = `UPDATE bills SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`;
+    const query = `UPDATE bills SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} 
+       RETURNING id, user_id, household_id, utility_type_id, amount, 
+       TO_CHAR(bill_date, 'YYYY-MM-DD') as bill_date, 
+       TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, 
+       usage_amount, payment_status, notes, created_at, updated_at`;
 
     const result = await pool.query(query, values);
     res.json(result.rows[0]);
@@ -680,7 +700,9 @@ app.post('/recurring/process', authenticateToken, async (req, res) => {
       const billResult = await pool.query(
         `INSERT INTO bills (user_id, utility_type_id, amount, bill_date, payment_status, notes) 
          VALUES ($1, $2, $3, $4, $5, $6) 
-         RETURNING *`,
+         RETURNING id, user_id, utility_type_id, amount, 
+         TO_CHAR(bill_date, 'YYYY-MM-DD') as bill_date, 
+         payment_status, notes, created_at`,
         [
           req.user.userId, 
           recurring.utility_type_id, 

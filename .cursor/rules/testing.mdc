@@ -23,7 +23,7 @@ After completing any feature implementation or bug fix, you MUST:
    
    If yes, create tests in `/frontend/tests/` directory following this pattern:
    - Test file naming: `[feature-name].spec.ts`
-   - Use Page Object Model when appropriate
+   - **ALWAYS use Page Object Model pattern**
    - Include happy path and error scenarios
    - Test user-visible behavior, not implementation details
 
@@ -32,26 +32,87 @@ After completing any feature implementation or bug fix, you MUST:
    
    If yes, run `npx playwright test` in the frontend directory.
 
-### Playwright Test Structure
-When creating Playwright tests, follow this structure:
+### Page Object Model (REQUIRED)
+
+**ALWAYS** use Page Object Model when creating Playwright tests. This is mandatory, not optional.
+
+#### Page Object Structure
+Create page objects in `/frontend/tests/pages/` directory:
 
 ```typescript
-import { test, expect } from '@playwright/test';
+// /frontend/tests/pages/LoginPage.ts
+import { Page, Locator } from '@playwright/test';
 
-test.describe('Feature Name', () => {
+export class LoginPage {
+  readonly page: Page;
+  readonly emailInput: Locator;
+  readonly passwordInput: Locator;
+  readonly signInButton: Locator;
+  readonly errorAlert: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.emailInput = page.getByLabel('Email Address');
+    this.passwordInput = page.getByLabel('Password');
+    this.signInButton = page.getByRole('button', { name: /sign in/i });
+    this.errorAlert = page.getByRole('alert');
+  }
+
+  async goto() {
+    await this.page.goto('/login');
+  }
+
+  async login(email: string, password: string) {
+    await this.emailInput.fill(email);
+    await this.passwordInput.fill(password);
+    await this.signInButton.click();
+  }
+}
+```
+
+#### Using Page Objects in Tests
+
+```typescript
+// /frontend/tests/login.spec.ts
+import { test, expect } from '@playwright/test';
+import { LoginPage } from './pages/LoginPage';
+
+test.describe('Login', () => {
+  let loginPage: LoginPage;
+
   test.beforeEach(async ({ page }) => {
-    // Setup code
+    loginPage = new LoginPage(page);
+    await loginPage.goto();
   });
 
-  test('should [expected behavior]', async ({ page }) => {
-    // Test implementation
+  test('should login successfully with valid credentials', async ({ page }) => {
+    await loginPage.login('user@example.com', 'password');
+    await expect(page).toHaveURL('/dashboard');
+  });
+
+  test('should show error with invalid credentials', async () => {
+    await loginPage.login('invalid@example.com', 'wrong');
+    await expect(loginPage.errorAlert).toBeVisible();
   });
 });
 ```
 
+#### Page Object Guidelines
+1. **One page object per page/component** - Create separate classes for each page
+2. **Encapsulate selectors** - All locators should be defined in the page object
+3. **Create action methods** - Common user actions should be methods (e.g., `login()`, `submitForm()`)
+4. **Keep assertions in tests** - Page objects provide actions, tests make assertions
+5. **Reuse across tests** - Import and instantiate page objects in test files
+
 ### Test Locations
 - E2E tests: `/frontend/tests/*.spec.ts`
+- Page Objects: `/frontend/tests/pages/*.ts`
 - Playwright config: `/frontend/playwright.config.ts`
+
+### Test Credentials
+Use these credentials for authenticated tests:
+- Email: `kurochkinslav@gmail.com`
+- Password: `admin1234`
 
 ## Workflow Reminders
 
@@ -69,3 +130,4 @@ test.describe('Feature Name', () => {
 - Use async/await for all browser interactions
 - Use meaningful test descriptions
 - Group related tests with `test.describe()`
+- **ALWAYS use Page Object Model pattern**

@@ -66,7 +66,73 @@ const formatPeriod = (period) => {
   }
 };
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+const COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#f97316', // orange
+  '#6366f1', // indigo
+  '#14b8a6', // teal
+  '#a855f7', // purple
+];
+
+// Custom label for pie chart
+const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name, value }) => {
+  if (percent < 0.05) return null; // Don't show labels for slices < 5%
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 25;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#374151"
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      fontSize={12}
+      fontWeight={500}
+    >
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
+
+// Custom tooltip for pie chart
+const CustomPieTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0];
+    return (
+      <Box
+        sx={{
+          bgcolor: 'background.paper',
+          p: 1.5,
+          borderRadius: 1,
+          boxShadow: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ color: data.payload.fill, fontWeight: 600 }}>
+          {data.name}
+        </Typography>
+        <Typography variant="body2">
+          ${data.value.toFixed(2)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {((data.value / data.payload.totalCost) * 100).toFixed(1)}% of total
+        </Typography>
+      </Box>
+    );
+  }
+  return null;
+};
 
 export default function Analytics() {
   const [costTrends, setCostTrends] = useState([]);
@@ -291,23 +357,44 @@ export default function Analytics() {
               <Typography variant="h6" gutterBottom>
                 Cost Distribution
               </Typography>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={340}>
                 <PieChart>
                   <Pie
-                    data={summary?.by_utility_type || []}
+                    data={(summary?.by_utility_type || []).map(item => ({
+                      ...item,
+                      totalCost: summary?.total_cost || 0,
+                    }))}
                     dataKey="total"
                     nameKey="utility_type_name"
                     cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label
+                    cy="45%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    label={renderCustomLabel}
+                    labelLine={false}
                   >
                     {(summary?.by_utility_type || []).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={COLORS[index % COLORS.length]}
+                        stroke="#fff"
+                        strokeWidth={2}
+                      />
                     ))}
                   </Pie>
-                  <RechartsTooltip />
-                  <Legend />
+                  <RechartsTooltip content={<CustomPieTooltip />} />
+                  <Legend 
+                    layout="horizontal"
+                    align="center"
+                    verticalAlign="bottom"
+                    wrapperStyle={{ paddingTop: 20 }}
+                    iconType="circle"
+                    iconSize={10}
+                    formatter={(value) => (
+                      <span style={{ color: '#374151', fontSize: 12 }}>{value}</span>
+                    )}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
